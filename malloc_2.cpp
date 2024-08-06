@@ -118,7 +118,7 @@ void* srealloc(void* oldp, size_t size){
     
     MallocMetadata* ptr = (MallocMetadata*)(oldp - metadataSize);
     
-    if(ptr->size >= size){
+    if(ptr->size >= size && size > 0){
         return oldp;
     }
     
