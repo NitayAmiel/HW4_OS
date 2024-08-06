@@ -87,7 +87,7 @@ void sfree(void* p){
     }
 
     MallocMetadata* iterator = (MallocMetadata*)head_list;
-    while(iterator < ptr || iterator->next == NULL){
+    while(iterator < ptr && iterator->next != NULL){
         iterator = iterator->next;
     }
 
