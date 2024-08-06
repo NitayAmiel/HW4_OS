@@ -2,7 +2,6 @@
 #include <unistd.h>
 #include <string.h>
 
-void * head_list =  NULL;
 typedef struct MallocMetadata {
     size_t size;
     bool is_free;
@@ -10,6 +9,8 @@ typedef struct MallocMetadata {
     MallocMetadata* prev;
 
 } MallocMetadata;
+
+MallocMetadata * head_list =  NULL;
 
 struct stats{
     size_t list_size_nodes;
