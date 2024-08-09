@@ -7,10 +7,11 @@ typedef struct MallocMetadata {
     bool is_free;
     MallocMetadata* next;
     MallocMetadata* prev;
+    MallocMetadata* buddy;
 
 } MallocMetadata;
 
-MallocMetadata *head_array[11]; // initialized to 0 automatically
+MallocMetadata *head_array[11];
 char is_initialized = 0;
 const size_t META_DATA_SIZE = sizeof(MallocMetadata);
 
@@ -24,6 +25,7 @@ struct stats{
 struct stats Statistics = {0,0,0,0}; 
 
 char get_optml_block(size_t size);
+
 void* smalloc_2(size_t size,char idx ){
     if(size == 0 ||size > 100000000){
         return NULL;
@@ -151,22 +153,22 @@ size_t _size_meta_data(){
 bool _init_malloc(){
     void *current_brk = sbrk(0);
     if(is_initialized != 0 || current_brk == (void *)-1){
-        return 1;
+        return false;
     }
     int num_blocks = 32;
     int block_size = 128 * 1024;
-    int aligment = num_blocks * block_size;
+    int alignment = num_blocks * block_size;
     uintptr_t current_addr = (uintptr_t)current_brk;
-    uintptr_t aligned_addr = (current_addr + (aligment) - 1) & ~(aligment - 1);
+    uintptr_t aligned_addr = (current_addr + (alignment) - 1) & ~(alignment - 1);
     intptr_t gap = aligned_addr - current_addr;
 
     if (sbrk(gap) == (void *)-1) {
-        return 1;
+        return false;
     }
 
     void *aligned_memory = sbrk(num_blocks * block_size);
     if (aligned_memory == (void *)-1) {
-        return 1;
+        return false;
     }
     
     // Initializing the 32 blocks as free and inserting them to the array and list
@@ -176,12 +178,12 @@ bool _init_malloc(){
     for(int i = 0; i < num_blocks; i++){
         tmp->is_free = true;
         tmp->size = block_size;
-        tmp->next = (i == num_blocks - 1) ? NULL : tmp + block_size;
-        tmp->prev = i == 0 ? NULL : tmp - block_size;
+        tmp->next = (i == num_blocks - 1) ? nullptr : tmp + block_size;
+        tmp->prev = i == 0 ? nullptr : tmp - block_size;
         addr += block_size;
         tmp = (MallocMetadata*)addr;
     }
-    return 0;
+    return true;
 }
 
 char get_optml_block(size_t size){
@@ -199,7 +201,7 @@ char get_optml_block(size_t size){
 
 char get_rlvnt_block(char idx)
 {
-    while(head_array[idx] == NULL){
+    while(head_array[idx] == nullptr){
         idx++;
     }
     return idx;
@@ -218,10 +220,10 @@ void divide_blk_to_2(void * allocated_block)
 void* smalloc(size_t size)
 {
     if(is_initialized == 0){
-        is_initialized  == 1;
-        if(_init_malloc() == 1){
+        if(!_init_malloc()){
             return NULL;
         }
+        is_initialized  == 1;
     }
     if(size == 0){
         return NULL;
@@ -244,5 +246,10 @@ void* smalloc(size_t size)
         tmp--;
     }
     return allocated_block;
+}
 
+void sfree(void* p){
+    //find the corresponding array cell
+    //remove from the list in the array
+    //merge buddies
 }
