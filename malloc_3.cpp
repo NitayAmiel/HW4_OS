@@ -65,7 +65,7 @@ void sfree_2(void* p){
     if(p == NULL || ptr->is_free == true ){
         return;
     }
-    MallocMetadata** head_list = head_array+get_optml_block(ptr->size-META_DATA_SIZE);
+    MallocMetadata** head_list = head_array + get_optml_block(ptr->size-META_DATA_SIZE);
     ptr->is_free = true;
     Statistics.list_size_nodes++;
     Statistics.list_size_sizes += ptr->size;
@@ -207,14 +207,84 @@ char get_rlvnt_block(char idx)
     return idx;
 }
 
+int getOrder(size_t size){
+    int order = 0;
+    while(size >>= 1)
+        order++;
+    return order;
+}
+
+void add_to_list(MallocMetadata * item, int index){
+    MallocMetadata * head = head_array[index];
+    if(head == nullptr) {
+        head_array[index] = item;
+        return;
+    }
+
+    MallocMetadata* iterator = head;
+    while(iterator < item && iterator->next != nullptr){
+        iterator = iterator->next;
+    }
+
+    if(iterator->next == nullptr && iterator < item) //the end of the list
+    {
+        iterator->next = item;
+        item->prev = iterator;
+        item->next = nullptr;
+        return;
+    }
+
+    item->next = iterator;
+    item->prev = iterator->prev;
+
+    if(iterator->prev == nullptr)
+    {
+        head_array[index] = item;
+    }
+    iterator->prev = item;
+}
+
+void remove_from_list(MallocMetadata * item, int index){
+    MallocMetadata * head = head_array[index];
+
+    if(item == head)
+        head_array[index] = nullptr;
+
+    MallocMetadata* iterator = head;
+    while(iterator != item && iterator->next != nullptr){
+        iterator = iterator->next;
+    }
+
+    if(iterator == item) {
+        if(iterator->prev)
+            iterator->prev->next = iterator->next;
+        if(iterator->next)
+            iterator->next->prev = iterator->prev;
+    }
+}
+
+MallocMetadata * merge_budds(MallocMetadata* item, MallocMetadata* buddy, int order){
+    remove_from_list(item, order);
+    remove_from_list(buddy, order);
+    item->size *= 2;
+    item = (item > buddy) ? buddy : item;
+    add_to_list(item, order + 1);
+    return item;
+}
+
 void divide_blk_to_2(void * allocated_block)
 {
-    MallocMetadata *blk =(MallocMetadata *) allocated_block; 
+    MallocMetadata *blk =(MallocMetadata *) allocated_block;
+    int order = getOrder(blk->size);
+    remove_from_list(blk, order);
     blk->size /= 2;
-    MallocMetadata* second_blk = (MallocMetadata*)(void *)((unsigned long long )allocated_block ^ blk->size);
+    MallocMetadata* second_blk = (MallocMetadata*)(void *)((size_t)allocated_block ^ blk->size);
     second_blk->size = blk->size;
-    second_blk->is_free = false;//just for enabling handling in sfree_2;
-    sfree_2((void *)(second_blk + META_DATA_SIZE));
+    second_blk->is_free = true;
+    second_blk->next = nullptr;
+    second_blk->prev = nullptr;
+    add_to_list(blk, order - 1);
+    add_to_list(second_blk, order - 1);
 }
 
 void* smalloc(size_t size)
@@ -249,7 +319,21 @@ void* smalloc(size_t size)
 }
 
 void sfree(void* p){
-    //find the corresponding array cell
-    //remove from the list in the array
+    MallocMetadata * meta_data = (MallocMetadata*)(p - META_DATA_SIZE);
+    int order = getOrder(meta_data->size);
+
+    if(order == 10) {
+        meta_data->is_free = true;
+        add_to_list(meta_data, order);
+        return;
+    }
     //merge buddies
+    MallocMetadata * my_buddy = (MallocMetadata*)((uintptr_t)meta_data ^ meta_data->size);
+    while(my_buddy->is_free && order < 10){
+        meta_data = merge_budds(meta_data, my_buddy, order);
+        my_buddy = (MallocMetadata*)((uintptr_t)meta_data ^ meta_data->size);
+        order = getOrder(meta_data->size);
+    }
+    meta_data->is_free = true;
+    add_to_list(meta_data, order);
 }
