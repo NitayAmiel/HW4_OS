@@ -209,7 +209,7 @@ char get_rlvnt_block(char idx)
 
 int getOrder(size_t size){
     int order = 0;
-    while(size >>= 1)
+    while(size >>= 128)
         order++;
     return order;
 }
