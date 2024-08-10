@@ -44,7 +44,7 @@ void* smalloc_2(size_t size,char idx ){
             ptr->is_free = false;
             Statistics.list_size_nodes--;
             Statistics.list_size_sizes -= ptr->size;
-            return ptr + META_DATA_SIZE;
+            return (void*) ptr + META_DATA_SIZE;
         }
         ptr = ptr->next;
     }    
@@ -188,13 +188,10 @@ bool _init_malloc(){
 
 char get_optml_block(size_t size){
     size += META_DATA_SIZE;
-    size = size >> 7;
     char counter = 0;
-    while(size != 0){
+    while(size > 128){
         size /= 2;
-        if(++counter > 10){
-            break;
-        }
+        ++counter;
     }
     return counter;
 }
@@ -309,7 +306,7 @@ void* smalloc(size_t size)
     }
 
     while(tmp > idx_optml_block){
-        divide_blk_to_2(allocated_block-META_DATA_SIZE);
+        divide_blk_to_2(allocated_block - META_DATA_SIZE);
         tmp--;
     }
     return allocated_block;
