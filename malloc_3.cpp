@@ -65,7 +65,7 @@ void sfree_2(void* p){
     if(p == NULL || ptr->is_free == true ){
         return;
     }
-    MallocMetadata** head_list = head_array+get_optml_block(ptr->size-META_DATA_SIZE);
+    MallocMetadata** head_list = &head_array[get_optml_block(ptr->size-META_DATA_SIZE)];
     ptr->is_free = true;
     Statistics.list_size_nodes++;
     Statistics.list_size_sizes += ptr->size;
@@ -178,8 +178,8 @@ bool _init_malloc(){
     for(int i = 0; i < num_blocks; i++){
         tmp->is_free = true;
         tmp->size = block_size;
-        tmp->next = (i == num_blocks - 1) ? nullptr : tmp + block_size;
-        tmp->prev = i == 0 ? nullptr : tmp - block_size;
+        tmp->next = (i == num_blocks - 1) ? nullptr : addr + block_size;
+        tmp->prev = i == 0 ? nullptr : addr - block_size;
         addr += block_size;
         tmp = (MallocMetadata*)addr;
     }
@@ -207,6 +207,64 @@ char get_rlvnt_block(char idx)
     return idx;
 }
 
+void add_to_list(MallocMetadata * item, int index){
+    MallocMetadata * head = head_array[index];
+    if(head == nullptr) {
+        head_array[index] = item;
+        return;
+    }
+
+    MallocMetadata* iterator = head;
+    while(iterator < item && iterator->next != nullptr){
+        iterator = iterator->next;
+    }
+
+    if(iterator->next == nullptr && iterator < item) //the end of the list
+    {
+        iterator->next = item;
+        item->prev = iterator;
+        item->next = nullptr;
+        return;
+    }
+
+    item->next = iterator;
+    item->prev = iterator->prev;
+
+    if(iterator->prev == nullptr)
+    {
+        head_array[index] = item;
+    }
+    iterator->prev = item;
+}
+
+void remove_from_list(MallocMetadata * item, int index){
+    MallocMetadata * head = head_array[index];
+
+    if(item == head)
+        head_array[index] = nullptr;
+
+    MallocMetadata* iterator = head;
+    while(iterator != item && iterator->next != nullptr){
+        iterator = iterator->next;
+    }
+
+    if(iterator == item) {
+        if(iterator->prev)
+            iterator->prev->next = iterator->next;
+        if(iterator->next)
+            iterator->next->prev = iterator->prev;
+    }
+}
+
+MallocMetadata * merge_budds(MallocMetadata* item, MallocMetadata* buddy, int order){
+    remove_from_list(item, order);
+    remove_from_list(buddy, order);
+    item->size *= 2;
+    item = (item > buddy) ? buddy : item;
+    add_to_list(item, order + 1);
+    return item;
+}
+
 void divide_blk_to_2(void * allocated_block)
 {
     MallocMetadata *blk =(MallocMetadata *) allocated_block; 
@@ -214,7 +272,8 @@ void divide_blk_to_2(void * allocated_block)
     MallocMetadata* second_blk = (MallocMetadata*)(void *)((unsigned long long )allocated_block ^ blk->size);
     second_blk->size = blk->size;
     second_blk->is_free = false;//just for enabling handling in sfree_2;
-    sfree_2((void *)(second_blk + META_DATA_SIZE));
+    void * second_blk_addr = (void *)second_blk;
+    sfree_2(second_blk_addr + META_DATA_SIZE);
 }
 
 void* smalloc(size_t size)
@@ -247,6 +306,7 @@ void* smalloc(size_t size)
     }
     return allocated_block;
 }
+
 
 void sfree(void* p){
     MallocMetadata * meta_data = (MallocMetadata*)(p - META_DATA_SIZE);
