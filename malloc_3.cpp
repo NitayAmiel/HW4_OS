@@ -7,8 +7,6 @@ typedef struct MallocMetadata {
     bool is_free;
     MallocMetadata* next;
     MallocMetadata* prev;
-    MallocMetadata* buddy;
-
 } MallocMetadata;
 
 MallocMetadata *head_array[11];
@@ -32,6 +30,7 @@ void* smalloc_2(size_t size,char idx ){
     }
     MallocMetadata**  head_list = &head_array[idx];
     MallocMetadata* ptr = *head_list;
+    //size += META_DATA_SIZE;
     while (ptr != NULL) {
         if(ptr->size >= size){
             if(ptr->prev != NULL ){ 
@@ -45,7 +44,7 @@ void* smalloc_2(size_t size,char idx ){
             ptr->is_free = false;
             Statistics.list_size_nodes--;
             Statistics.list_size_sizes -= ptr->size;
-            return ptr;
+            return ptr + META_DATA_SIZE;
         }
         ptr = ptr->next;
     }    
@@ -65,7 +64,8 @@ void sfree_2(void* p){
     if(p == NULL || ptr->is_free == true ){
         return;
     }
-    MallocMetadata** head_list = &head_array[get_optml_block(ptr->size-META_DATA_SIZE)];
+    char opt_idx = get_optml_block(ptr->size);
+    MallocMetadata** head_list = &head_array[opt_idx];
     ptr->is_free = true;
     Statistics.list_size_nodes++;
     Statistics.list_size_sizes += ptr->size;
@@ -177,9 +177,9 @@ bool _init_malloc(){
     void* addr = tmp;
     for(int i = 0; i < num_blocks; i++){
         tmp->is_free = true;
-        tmp->size = block_size;
-        tmp->next = (i == num_blocks - 1) ? nullptr : addr + block_size;
-        tmp->prev = i == 0 ? nullptr : addr - block_size;
+        tmp->size = block_size - META_DATA_SIZE;
+        tmp->next = (i == num_blocks - 1) ? NULL: (MallocMetadata* )(addr + block_size);
+        tmp->prev = i == 0 ? NULL : (MallocMetadata* )(addr - block_size);
         addr += block_size;
         tmp = (MallocMetadata*)addr;
     }
@@ -188,7 +188,7 @@ bool _init_malloc(){
 
 char get_optml_block(size_t size){
     size += META_DATA_SIZE;
-    size = size >> 8;
+    size = size >> 7;
     char counter = 0;
     while(size != 0){
         size /= 2;
@@ -211,6 +211,8 @@ void add_to_list(MallocMetadata * item, int index){
     MallocMetadata * head = head_array[index];
     if(head == nullptr) {
         head_array[index] = item;
+        item->next = NULL;
+        item->prev = NULL;
         return;
     }
 
@@ -241,7 +243,7 @@ void remove_from_list(MallocMetadata * item, int index){
     MallocMetadata * head = head_array[index];
 
     if(item == head)
-        head_array[index] = nullptr;
+        head_array[index] = item->next;
 
     MallocMetadata* iterator = head;
     while(iterator != item && iterator->next != nullptr){
@@ -259,21 +261,27 @@ void remove_from_list(MallocMetadata * item, int index){
 MallocMetadata * merge_budds(MallocMetadata* item, MallocMetadata* buddy, int order){
     remove_from_list(item, order);
     remove_from_list(buddy, order);
-    item->size *= 2;
     item = (item > buddy) ? buddy : item;
-    add_to_list(item, order + 1);
+    item->size *= 2;
+    item->size += META_DATA_SIZE;
+    void * item_addr = (void *)item;
+    sfree_2(item_addr + META_DATA_SIZE);
+    //add_to_list(item, order + 1);
     return item;
 }
 
 void divide_blk_to_2(void * allocated_block)
 {
     MallocMetadata *blk =(MallocMetadata *) allocated_block; 
+    blk->size += META_DATA_SIZE;
     blk->size /= 2;
-    MallocMetadata* second_blk = (MallocMetadata*)(void *)((unsigned long long )allocated_block ^ blk->size);
+    blk->size -= META_DATA_SIZE;
+    MallocMetadata* second_blk = (MallocMetadata*)(void *)((size_t)allocated_block ^ (blk->size + META_DATA_SIZE));
     second_blk->size = blk->size;
     second_blk->is_free = false;//just for enabling handling in sfree_2;
     void * second_blk_addr = (void *)second_blk;
     sfree_2(second_blk_addr + META_DATA_SIZE);
+    //add_to_list(second_blk, get_optml_block(second_blk->size));
 }
 
 void* smalloc(size_t size)
@@ -282,7 +290,7 @@ void* smalloc(size_t size)
         if(!_init_malloc()){
             return NULL;
         }
-        is_initialized  == 1;
+        is_initialized  = 1;
     }
     if(size == 0){
         return NULL;
@@ -301,7 +309,7 @@ void* smalloc(size_t size)
     }
 
     while(tmp > idx_optml_block){
-        divide_blk_to_2(allocated_block);
+        divide_blk_to_2(allocated_block-META_DATA_SIZE);
         tmp--;
     }
     return allocated_block;
@@ -310,20 +318,21 @@ void* smalloc(size_t size)
 
 void sfree(void* p){
     MallocMetadata * meta_data = (MallocMetadata*)(p - META_DATA_SIZE);
-    int order = getOrder(meta_data->size);
+    int order = get_optml_block(meta_data->size);
 
+    meta_data->is_free = false;
+    void * meta_data_addr = (void *)meta_data;
+    sfree_2(meta_data_addr + META_DATA_SIZE);
     if(order == 10) {
-        meta_data->is_free = true;
-        add_to_list(meta_data, order);
         return;
     }
+    
     //merge buddies
-    MallocMetadata * my_buddy = (MallocMetadata*)((uintptr_t)meta_data ^ meta_data->size);
+    MallocMetadata * my_buddy = (MallocMetadata*)((uintptr_t)meta_data ^ (meta_data->size + META_DATA_SIZE));
     while(my_buddy->is_free && order < 10){
         meta_data = merge_budds(meta_data, my_buddy, order);
-        my_buddy = (MallocMetadata*)((uintptr_t)meta_data ^ meta_data->size);
-        order = getOrder(meta_data->size);
+        my_buddy = (MallocMetadata*)((uintptr_t)meta_data ^ (meta_data->size  + META_DATA_SIZE));
+        order = get_optml_block(meta_data->size);
     }
-    meta_data->is_free = true;
-    add_to_list(meta_data, order);
+   //add_to_list(meta_data, order);
 }
