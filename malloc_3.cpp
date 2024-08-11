@@ -249,7 +249,21 @@ void* smalloc(size_t size)
 }
 
 void sfree(void* p){
-    //find the corresponding array cell
-    //remove from the list in the array
+    MallocMetadata * meta_data = (MallocMetadata*)(p - META_DATA_SIZE);
+    int order = getOrder(meta_data->size);
+
+    if(order == 10) {
+        meta_data->is_free = true;
+        add_to_list(meta_data, order);
+        return;
+    }
     //merge buddies
+    MallocMetadata * my_buddy = (MallocMetadata*)((uintptr_t)meta_data ^ meta_data->size);
+    while(my_buddy->is_free && order < 10){
+        meta_data = merge_budds(meta_data, my_buddy, order);
+        my_buddy = (MallocMetadata*)((uintptr_t)meta_data ^ meta_data->size);
+        order = getOrder(meta_data->size);
+    }
+    meta_data->is_free = true;
+    add_to_list(meta_data, order);
 }
