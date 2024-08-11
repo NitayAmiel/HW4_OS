@@ -238,18 +238,24 @@ void add_to_list(MallocMetadata * item, int index){
 
 void remove_from_list(MallocMetadata * item, int index){
     MallocMetadata * head = head_array[index];
-
-    if(item == head)
+    if(head == nullptr || item == NULL){
+        return;
+    }
+    /*if(item == head){
         head_array[index] = item->next;
-
+        return;
+    }*/
     MallocMetadata* iterator = head;
     while(iterator != item && iterator->next != nullptr){
         iterator = iterator->next;
     }
 
     if(iterator == item) {
-        if(iterator->prev)
+        if(iterator->prev){
             iterator->prev->next = iterator->next;
+        }else{
+            head_array[index] = iterator->next;
+        }
         if(iterator->next)
             iterator->next->prev = iterator->prev;
     }
@@ -333,3 +339,33 @@ void sfree(void* p){
     }
    //add_to_list(meta_data, order);
 }
+
+void* scalloc(size_t num, size_t size){
+    void * res = smalloc(size * num);
+    if(res == NULL) return NULL;
+    memset(res, 0, size * num);
+    return res;
+}
+/*
+void* srealloc(void* oldp, size_t size){
+    size_t metadataSize = sizeof(MallocMetadata);
+    if(oldp == NULL){
+        return smalloc(size);
+    }
+    
+    MallocMetadata* ptr = (MallocMetadata*)(oldp - metadataSize);
+    
+    if(ptr->size >= size && size > 0){
+        return oldp;
+    }
+    
+    void* res = smalloc(size);
+    if(res == NULL){
+        return NULL;
+    }
+
+    memmove(res, oldp, size);
+    sfree(oldp);
+    return res;
+}
+*/
