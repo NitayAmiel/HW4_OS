@@ -1,7 +1,7 @@
 #include <iostream>
 #include <cassert>
 #include <cstring>
-#include "malloc_2.cpp"
+#include "malloc_3.cpp"
 
 // Assuming the existence of the functions and the MallocMetadata structure.
 extern void* smalloc(size_t size);
@@ -161,14 +161,26 @@ void test_stats() {
 
 
 int main() {
+    if(fork() == 0) {
     test_smalloc();
     std::cout << "smalloc tests passed!" << std::endl;
+    exit(0);
+}
+    if(fork() == 0) {
     test_scalloc();
     std::cout << "scalloc tests passed!" << std::endl;
+    exit(0);
+    }
+    if(fork() == 0){
     test_sfree();
     std::cout << "sfree tests passed!" << std::endl;
+    exit(0);
+    }
+    if(fork() == 0){
     test_srealloc();
     std::cout << "srealloc tests passed!" << std::endl;
+    }
+    if(fork() ==0 ){
     test_stats();
     std::cout << "Stats functions tests passed!" << std::endl;
     return 0;

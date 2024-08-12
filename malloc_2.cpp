@@ -37,12 +37,12 @@ void* smalloc(size_t size){
                 head_list = ptr->next;
             }
             if( ptr->next != NULL ){
-                ptr->next->prev == ptr->prev;
+                ptr->next->prev = ptr->prev;
             }
             ptr->is_free = false;
             Statistics.list_size_nodes--;
             Statistics.list_size_sizes -= ptr->size;
-            return ptr + metadataSize;
+            return (void*)((char*)ptr + metadataSize);
         }
         ptr = ptr->next;
     }
@@ -59,7 +59,7 @@ void* smalloc(size_t size){
     MallocMetadata* metadata = (MallocMetadata *)res;
     metadata->size = size;
     metadata->is_free = false;
-    return res + metadataSize;
+    return (void*)((char*)res + metadataSize);
 }
 
 void* scalloc(size_t num, size_t size){
@@ -72,7 +72,7 @@ void* scalloc(size_t num, size_t size){
 void sfree(void* p){
     size_t metadataSize = sizeof(MallocMetadata);
 
-    MallocMetadata* ptr = (MallocMetadata*)(p - metadataSize);
+    MallocMetadata* ptr = (MallocMetadata*)((char*)p - metadataSize);
     if(p == NULL || ptr->is_free == true ){
         return;
     }
@@ -106,6 +106,8 @@ void sfree(void* p){
     if(iterator->prev == NULL)
     {
         head_list = ptr;
+    }else{
+        iterator->prev->next = ptr;
     }
     iterator->prev = ptr;
 }
@@ -116,7 +118,7 @@ void* srealloc(void* oldp, size_t size){
         return smalloc(size);
     }
     
-    MallocMetadata* ptr = (MallocMetadata*)(oldp - metadataSize);
+    MallocMetadata* ptr = (MallocMetadata*)((char*)oldp - metadataSize);
     
     if(ptr->size >= size && size > 0){
         return oldp;
